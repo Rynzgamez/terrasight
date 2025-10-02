@@ -27,9 +27,33 @@ const Dashboard = () => {
   const [selectedField, setSelectedField] = useState("field-1");
   
   const fields = [
-    { id: "field-1", name: "North Field", crop: "Wheat", area: "2.5 acres", health: "good" },
-    { id: "field-2", name: "South Field", crop: "Rice", area: "3.2 acres", health: "warning" },
-    { id: "field-3", name: "East Field", crop: "Maize", area: "1.8 acres", health: "good" },
+    { 
+      id: "field-1", 
+      name: "North Field", 
+      crop: "Wheat", 
+      area: "2.5 acres", 
+      health: "good",
+      waterLevel: 28,
+      sprinklerActive: false
+    },
+    { 
+      id: "field-2", 
+      name: "South Field", 
+      crop: "Rice", 
+      area: "3.2 acres", 
+      health: "warning",
+      waterLevel: 45,
+      sprinklerActive: false
+    },
+    { 
+      id: "field-3", 
+      name: "East Field", 
+      crop: "Maize", 
+      area: "1.8 acres", 
+      health: "good",
+      waterLevel: 15,
+      sprinklerActive: false
+    },
   ];
 
   const todayAction = {

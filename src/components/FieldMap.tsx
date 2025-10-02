@@ -1,7 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Satellite, Activity } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MapPin, Satellite, Activity, Droplets, Power, Clock, AlertTriangle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 interface Field {
   id: string;
@@ -9,6 +14,8 @@ interface Field {
   crop: string;
   area: string;
   health: string;
+  waterLevel: number; // percentage 0-100
+  sprinklerActive: boolean;
 }
 
 interface FieldMapProps {
@@ -19,6 +26,46 @@ interface FieldMapProps {
 
 const FieldMap = ({ fields, selectedField, onFieldSelect }: FieldMapProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [sprinklerStates, setSprinklerStates] = useState<{ [key: string]: boolean }>({
+    "field-1": false,
+    "field-2": false,
+    "field-3": false,
+  });
+  const [automationMode, setAutomationMode] = useState<string>("off");
+  
+  // Simulated IoT sensor data
+  const [waterLevels] = useState<{ [key: string]: number }>({
+    "field-1": 28,
+    "field-2": 45,
+    "field-3": 15,
+  });
+
+  const handleSprinklerToggle = (fieldId: string) => {
+    setSprinklerStates(prev => {
+      const newState = { ...prev, [fieldId]: !prev[fieldId] };
+      toast.success(
+        newState[fieldId] 
+          ? `Sprinklers activated for ${fields.find(f => f.id === fieldId)?.name}`
+          : `Sprinklers deactivated for ${fields.find(f => f.id === fieldId)?.name}`
+      );
+      return newState;
+    });
+  };
+
+  const handleAutomationChange = (value: string) => {
+    setAutomationMode(value);
+    if (value !== "off") {
+      toast.success(`Automated sprinklers set to: ${value === "2hours" ? "Every 2-3 hours" : "Daily at 6 AM & 6 PM"}`);
+    } else {
+      toast.info("Automated sprinklers disabled");
+    }
+  };
+
+  const getWaterStatus = (level: number) => {
+    if (level < 30) return { status: "Critical", color: "text-destructive" };
+    if (level < 50) return { status: "Low", color: "text-warning" };
+    return { status: "Optimal", color: "text-success" };
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -150,6 +197,105 @@ const FieldMap = ({ fields, selectedField, onFieldSelect }: FieldMapProps) => {
               </div>
             </div>
           </div>
+        </div>
+        
+        {/* IoT Water Management Controls */}
+        <div className="mt-6 space-y-4">
+          <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
+            <div className="flex items-center gap-3">
+              <Droplets className="h-5 w-5 text-info" />
+              <div>
+                <h3 className="font-semibold">Smart Irrigation Control</h3>
+                <p className="text-sm text-muted-foreground">IoT-based water management system</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="automation-mode" className="text-sm">Automation:</Label>
+              <Select value={automationMode} onValueChange={handleAutomationChange}>
+                <SelectTrigger id="automation-mode" className="w-[180px]">
+                  <SelectValue placeholder="Select mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="off">Manual Control</SelectItem>
+                  <SelectItem value="2hours">Every 2-3 Hours</SelectItem>
+                  <SelectItem value="daily">Daily (6AM & 6PM)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Field-specific controls */}
+          <div className="grid gap-3">
+            {fields.map((field) => {
+              const waterLevel = waterLevels[field.id] || 0;
+              const waterStatus = getWaterStatus(waterLevel);
+              const isSprinklerActive = sprinklerStates[field.id] || false;
+              
+              return (
+                <div key={field.id} className="p-4 border rounded-lg bg-card">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h4 className="font-medium">{field.name}</h4>
+                        {waterLevel < 30 && (
+                          <Badge variant="destructive" className="flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" />
+                            Low Water
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 text-sm">
+                        <div className="flex items-center gap-2">
+                          <Droplets className="h-4 w-4 text-info" />
+                          <span>Water Level:</span>
+                          <span className={`font-semibold ${waterStatus.color}`}>
+                            {waterLevel}% - {waterStatus.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">
+                            Last updated: 5 mins ago
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor={`sprinkler-${field.id}`} className="text-sm">
+                          Sprinkler
+                        </Label>
+                        <Switch
+                          id={`sprinkler-${field.id}`}
+                          checked={isSprinklerActive}
+                          onCheckedChange={() => handleSprinklerToggle(field.id)}
+                          className={isSprinklerActive ? "data-[state=checked]:bg-success" : ""}
+                        />
+                      </div>
+                      {isSprinklerActive && (
+                        <Badge className="bg-success/10 text-success border-success/20">
+                          <Power className="h-3 w-3 mr-1" />
+                          Active
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {automationMode !== "off" && (
+            <div className="p-3 bg-info/10 border border-info/20 rounded-lg">
+              <div className="flex items-center gap-2 text-sm text-info">
+                <Clock className="h-4 w-4" />
+                <span>
+                  Automated irrigation is {automationMode === "2hours" ? "running every 2-3 hours" : "scheduled for 6 AM and 6 PM"}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
