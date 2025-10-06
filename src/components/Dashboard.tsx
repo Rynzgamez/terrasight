@@ -22,7 +22,6 @@ import FieldMap from "./FieldMap";
 import SensorData from "./SensorData";
 import MarketPrices from "./MarketPrices";
 import WeatherWidget from "./WeatherWidget";
-import TerraSightAnalysis from "./TerraSightAnalysis";
 
 const Dashboard = () => {
   const [selectedField, setSelectedField] = useState("field-1");
@@ -155,10 +154,9 @@ const Dashboard = () => {
 
         {/* Main Dashboard Tabs */}
         <Tabs defaultValue="fields" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-5 bg-card">
+          <TabsList className="grid w-full grid-cols-4 bg-card">
             <TabsTrigger value="fields">Fields</TabsTrigger>
             <TabsTrigger value="sensors">Sensors</TabsTrigger>
-            <TabsTrigger value="terrasight">TerraSight AI</TabsTrigger>
             <TabsTrigger value="market">Market</TabsTrigger>
             <TabsTrigger value="schedule">Schedule</TabsTrigger>
           </TabsList>
@@ -208,10 +206,6 @@ const Dashboard = () => {
 
           <TabsContent value="sensors">
             <SensorData />
-          </TabsContent>
-
-          <TabsContent value="terrasight">
-            <TerraSightAnalysis />
           </TabsContent>
 
           <TabsContent value="market">
