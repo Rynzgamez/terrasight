@@ -10,23 +10,19 @@ import { useToast } from "@/hooks/use-toast";
 
 interface AnalysisResults {
   original: string;
-  segmentationMask: string;
-  vegetationIndex: string;
-  healthMap: string;
-  diagnosis: {
-    crop_type: string;
-    disease_name: string;
-    overall_health: string;
-    confidence: number;
-    issues: string[];
-    recommendations: string[];
+  visualizedImage: string;
+  status: string;
+  crop_type: string;
+  disease_name: string;
+  confidence: number;
+  vegetation_index: number;
+  diagnosis: string;
+  recommendations: string[];
+  detections: {
+    weeds: number;
+    pests: number;
+    total: number;
   };
-  detections: Array<{
-    bbox: number[];
-    confidence: number;
-    label: string;
-    category: string;
-  }>;
 }
 
 const TerraSightAnalysis = () => {
@@ -73,47 +69,53 @@ const TerraSightAnalysis = () => {
     setAnalysisProgress(0);
 
     try {
-      // Simulate progress steps
-      const steps = ["Preprocessing", "Segmentation", "Health Classification", "Vegetation Index", "Fusion"];
-      for (let i = 0; i < steps.length; i++) {
-        setAnalysisProgress((i + 1) * 20);
-        await new Promise(resolve => setTimeout(resolve, 800));
+      // Convert base64 to blob
+      const base64Response = await fetch(uploadedImage);
+      const blob = await base64Response.blob();
+      
+      // Create FormData
+      const formData = new FormData();
+      formData.append('image', blob, 'drone_image.jpg');
+
+      // Progress simulation
+      setAnalysisProgress(10);
+      
+      // Call Flask API
+      const response = await fetch('http://127.0.0.1:5000/analyze', {
+        method: 'POST',
+        body: formData,
+      });
+
+      setAnalysisProgress(80);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Analysis failed');
       }
 
-      // TODO: Replace with actual API call to your Python backend
-      // const response = await fetch('YOUR_BACKEND_URL/analyze', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ 
-      //     image: uploadedImage,
-      //     enable_yolo: enableYolo 
-      //   })
-      // });
-      // const data = await response.json();
+      const data = await response.json();
 
-      // Mock results for demonstration
-      const mockResults: AnalysisResults = {
+      if (!data.success) {
+        throw new Error(data.message || 'Analysis failed');
+      }
+
+      // Convert base64 image to data URL
+      const visualizedImage = `data:image/png;base64,${data.image_base64}`;
+
+      const analysisResults: AnalysisResults = {
         original: uploadedImage,
-        segmentationMask: uploadedImage,
-        vegetationIndex: uploadedImage,
-        healthMap: uploadedImage,
-        diagnosis: {
-          crop_type: "Wheat",
-          disease_name: "Healthy",
-          overall_health: "Healthy",
-          confidence: 0.92,
-          issues: enableYolo ? ["2 potential weed(s) detected"] : [],
-          recommendations: enableYolo 
-            ? ["Consider targeted herbicide application or manual removal", "Continue regular monitoring"]
-            : ["Continue regular monitoring"]
-        },
-        detections: enableYolo ? [
-          { bbox: [100, 100, 200, 200], confidence: 0.85, label: "weed", category: "weed" },
-          { bbox: [300, 150, 400, 250], confidence: 0.78, label: "weed", category: "weed" }
-        ] : []
+        visualizedImage: visualizedImage,
+        status: data.status,
+        crop_type: data.crop_type,
+        disease_name: data.disease_name,
+        confidence: data.confidence / 100,
+        vegetation_index: data.vegetation_index,
+        diagnosis: data.diagnosis,
+        recommendations: data.recommendations,
+        detections: data.detections
       };
 
-      setResults(mockResults);
+      setResults(analysisResults);
       setAnalysisProgress(100);
       
       toast({
@@ -121,9 +123,10 @@ const TerraSightAnalysis = () => {
         description: "Drone image analysis finished successfully",
       });
     } catch (error) {
+      console.error('Analysis error:', error);
       toast({
         title: "Analysis Failed",
-        description: "Failed to analyze image. Please check your backend connection.",
+        description: error instanceof Error ? error.message : "Failed to connect to backend. Ensure Flask server is running on port 5000.",
         variant: "destructive",
       });
     } finally {
@@ -139,18 +142,22 @@ const TerraSightAnalysis = () => {
 TerraSight AI Analysis Report
 =============================
 
-Crop Type: ${results.diagnosis.crop_type}
-Disease: ${results.diagnosis.disease_name}
-Overall Health: ${results.diagnosis.overall_health}
-Confidence: ${(results.diagnosis.confidence * 100).toFixed(1)}%
+Crop Type: ${results.crop_type}
+Disease: ${results.disease_name}
+Overall Health: ${results.status}
+Confidence: ${(results.confidence * 100).toFixed(1)}%
+Vegetation Index: ${results.vegetation_index.toFixed(3)}
 
-Issues Detected:
-${results.diagnosis.issues.map(issue => `- ${issue}`).join('\n')}
+Diagnosis:
+${results.diagnosis}
 
 Recommendations:
-${results.diagnosis.recommendations.map(rec => `- ${rec}`).join('\n')}
+${results.recommendations.map(rec => `- ${rec}`).join('\n')}
 
-Detections: ${results.detections.length} objects found
+Detections:
+- Weeds: ${results.detections.weeds}
+- Pests: ${results.detections.pests}
+- Total: ${results.detections.total}
     `;
 
     const blob = new Blob([report], { type: 'text/plain' });
@@ -244,7 +251,7 @@ Detections: ${results.detections.length} objects found
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
-                  {results.diagnosis.overall_health === "Healthy" ? (
+                  {results.status === "Healthy" ? (
                     <CheckCircle className="h-5 w-5 text-success" />
                   ) : (
                     <AlertCircle className="h-5 w-5 text-warning" />
@@ -266,43 +273,54 @@ Detections: ${results.detections.length} objects found
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">Crop Type</Label>
-                  <p className="text-lg font-semibold">{results.diagnosis.crop_type}</p>
+                  <p className="text-lg font-semibold">{results.crop_type}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Disease Status</Label>
-                  <p className="text-lg font-semibold">{results.diagnosis.disease_name}</p>
+                  <p className="text-lg font-semibold">{results.disease_name}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Overall Health</Label>
                   <div className="flex items-center gap-2">
                     <Badge
-                      variant={results.diagnosis.overall_health === "Healthy" ? "default" : "secondary"}
-                      className={results.diagnosis.overall_health !== "Healthy" ? "bg-warning" : ""}
+                      variant={results.status === "Healthy" ? "default" : "secondary"}
+                      className={results.status !== "Healthy" ? "bg-warning" : ""}
                     >
-                      {results.diagnosis.overall_health}
+                      {results.status}
                     </Badge>
                     <span className="text-sm text-muted-foreground">
-                      {(results.diagnosis.confidence * 100).toFixed(1)}% confidence
+                      {(results.confidence * 100).toFixed(1)}% confidence
                     </span>
                   </div>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">Detections</Label>
-                  <p className="text-lg font-semibold">{results.detections.length} objects</p>
+                  <Label className="text-muted-foreground">Vegetation Index</Label>
+                  <p className="text-lg font-semibold">{results.vegetation_index.toFixed(3)}</p>
                 </div>
               </div>
 
-              {results.diagnosis.issues.length > 0 && (
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="p-3 bg-accent/50 rounded-lg">
+                  <Label className="text-muted-foreground text-xs">Weeds Detected</Label>
+                  <p className="text-2xl font-bold">{results.detections.weeds}</p>
+                </div>
+                <div className="p-3 bg-accent/50 rounded-lg">
+                  <Label className="text-muted-foreground text-xs">Pests Detected</Label>
+                  <p className="text-2xl font-bold">{results.detections.pests}</p>
+                </div>
+                <div className="p-3 bg-accent/50 rounded-lg">
+                  <Label className="text-muted-foreground text-xs">Total Detections</Label>
+                  <p className="text-2xl font-bold">{results.detections.total}</p>
+                </div>
+              </div>
+
+              {results.diagnosis && (
                 <div className="p-4 bg-warning/10 border border-warning rounded-lg">
                   <h4 className="font-semibold mb-2 flex items-center gap-2">
                     <AlertCircle className="h-4 w-4" />
-                    Issues Detected
+                    Diagnosis
                   </h4>
-                  <ul className="space-y-1">
-                    {results.diagnosis.issues.map((issue, idx) => (
-                      <li key={idx} className="text-sm">• {issue}</li>
-                    ))}
-                  </ul>
+                  <p className="text-sm">{results.diagnosis}</p>
                 </div>
               )}
 
@@ -312,7 +330,7 @@ Detections: ${results.detections.length} objects found
                   Recommendations
                 </h4>
                 <ul className="space-y-1">
-                  {results.diagnosis.recommendations.map((rec, idx) => (
+                  {results.recommendations.map((rec, idx) => (
                     <li key={idx} className="text-sm">• {rec}</li>
                   ))}
                 </ul>
@@ -336,26 +354,10 @@ Detections: ${results.detections.length} objects found
                   />
                 </div>
                 <div>
-                  <Label className="mb-2 block">Segmentation Mask</Label>
+                  <Label className="mb-2 block">AI Analysis Result</Label>
                   <img
-                    src={results.segmentationMask}
-                    alt="Segmentation"
-                    className="w-full rounded-lg border border-border"
-                  />
-                </div>
-                <div>
-                  <Label className="mb-2 block">Vegetation Index Heatmap</Label>
-                  <img
-                    src={results.vegetationIndex}
-                    alt="Vegetation Index"
-                    className="w-full rounded-lg border border-border"
-                  />
-                </div>
-                <div>
-                  <Label className="mb-2 block">Health Overlay Map</Label>
-                  <img
-                    src={results.healthMap}
-                    alt="Health Map"
+                    src={results.visualizedImage}
+                    alt="Analysis Visualization"
                     className="w-full rounded-lg border border-border"
                   />
                 </div>
@@ -370,15 +372,16 @@ Detections: ${results.detections.length} objects found
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
             <Info className="h-4 w-4" />
-            Backend Integration Required
+            Flask Backend Setup
           </CardTitle>
         </CardHeader>
         <CardContent className="text-sm space-y-2">
-          <p>To enable real AI analysis, deploy the Python backend (agri_drone_system.py) as a Flask/FastAPI service.</p>
-          <p className="text-muted-foreground">
-            Update the API endpoint in the <code className="bg-background px-1 py-0.5 rounded">runAnalysis</code> function
-            to connect to your backend service.
-          </p>
+          <p>To run the analysis:</p>
+          <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+            <li>Install dependencies: <code className="bg-background px-1 py-0.5 rounded">pip install flask flask-cors torch torchvision pillow numpy</code></li>
+            <li>Run the Flask server: <code className="bg-background px-1 py-0.5 rounded">python flask_api.py</code></li>
+            <li>Ensure server is running on <code className="bg-background px-1 py-0.5 rounded">http://127.0.0.1:5000</code></li>
+          </ol>
         </CardContent>
       </Card>
     </div>
